@@ -1,0 +1,8 @@
+Retriever
+
+Let's build the retriever class. The retriever is being called by receiving a search vector(768 dimensions), a table/view in the database  to retrieve from and optionally a number of results to return (default 5).
+
+The retriever then uses cosine similarity search with pgvector and lexical search (look up what options there are on psql).
+It uses RRF to fuse the results.
+
+It returns results up to the number specified above.
