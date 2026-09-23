@@ -1,0 +1,27 @@
+The integrator has the task to communicate with the different units of the pipeline. those are: the user, the retriever, the embedding model and the generating model 
+
+def embedding question
+Input: User prompt, Database Name
+
+- sends user prompt to embedding model, receives: user prompt embedded (vector)
+
+- calls retriever with:
+	- user prompt as search query
+	- user prompt embedded as search vector
+	- database name as database name
+
+Receives from retriever:
+Top results from data
+
+
+def context forming:
+- forms context from received data, note: generator model should receive both text chunks and ids to refer to, if user asks for it.
+
+def generator call:
+input: context, user prompt
+output: generated answer
+
+note: the generator should precisely answer to the question using the data provided. if there is no data provided it should block the answer
+and call the integrator which can now ask the user, if another search query should be conducted. you should write a prompt which enables this mechanic.
+
+def plot: plots answer in a meaningful manner
