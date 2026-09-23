@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from integrator import (
+from rag_pipeline.integrator import (
     DEFAULT_GENERATOR_SYSTEM_PROMPT,
     INSUFFICIENT_CONTEXT_TOKEN,
     EmptyUserPromptError,
