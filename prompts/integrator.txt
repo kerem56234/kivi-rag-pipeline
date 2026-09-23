@@ -1,27 +1,53 @@
 The integrator has the task to communicate with the different units of the pipeline. those are: the user, the retriever, the embedding model and the generating model 
 
-def embedding question
-Input: User prompt, Database Name
+user_prompt
+   ↓
+embed_and_retrieve(user_prompt, retrieval_view)
+   ↓
+embedding_model.embed(user_prompt)
+   ↓
+retriever.retrieve(
+    search_vector=embedded_prompt,
+    relation=retrieval_view,
+    query_text=user_prompt
+)
+   ↓
+form_context(retrieved_results)
+   ↓
+if no retrieved_results:
+    ask user whether to try another search query
+else:
+    call_generator(context, user_prompt)
+   ↓
+if generator returns INSUFFICIENT_CONTEXT:
+    ask user whether to try another search query
+else:
+    render_answer(generated_answer, retrieved_sources)
 
-- sends user prompt to embedding model, receives: user prompt embedded (vector)
+generator prompt:
+"""
+You are a grounded RAG answer generator.
 
-- calls retriever with:
-	- user prompt as search query
-	- user prompt embedded as search vector
-	- database name as database name
+Your task is to answer the user's question using only the provided context.
+Each context item contains an id and a text chunk.
 
-Receives from retriever:
-Top results from data
+Use the context carefully and cite relevant ids when useful.
+Do not use outside knowledge.
 
+If the context is empty, irrelevant, or does not contain enough information
+to answer the user's question reliably, respond exactly with:
 
-def context forming:
-- forms context from received data, note: generator model should receive both text chunks and ids to refer to, if user asks for it.
+INSUFFICIENT_CONTEXT
 
-def generator call:
-input: context, user prompt
-output: generated answer
+Only use INSUFFICIENT_CONTEXT when the provided context truly cannot answer
+the question. If the context partially answers the question, provide the
+partial answer and clearly state what is missing.
 
-note: the generator should precisely answer to the question using the data provided. if there is no data provided it should block the answer
-and call the integrator which can now ask the user, if another search query should be conducted. you should write a prompt which enables this mechanic.
+User question:
+{user_prompt}
 
-def plot: plots answer in a meaningful manner
+Context:
+{context}
+
+Answer:
+"""
