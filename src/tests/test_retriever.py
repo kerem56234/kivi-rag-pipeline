@@ -3,7 +3,7 @@
 import math
 import pytest
 
-from retriever import (
+from rag_pipeline.retriever import (
     DEFAULT_RESULT_LIMIT,
     DEFAULT_RRF_K,
     EXPECTED_VECTOR_DIMENSIONS,
