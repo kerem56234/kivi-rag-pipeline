@@ -4,21 +4,23 @@
 This module contains the concrete generator adapter responsible for sending
 an already constructed RAG prompt to Ollama and returning generated text.
 
-The actual HTTP behavior is intentionally not implemented during the skeleton
-phase. Tests will define that behavior before production code is added.
+The adapter is intentionally small: it only translates between the internal
+GeneratorModel-style interface and Ollama's HTTP API.
 """
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Any, Final
+
+from rag_pipeline.integrator import GeneratorModelError
 
 
 # ============================================================
 # Default configuration
 # ============================================================
 
-# Keep infrastructure defaults in one visible place so callers can override
-# them without scattering Ollama-specific values throughout the application.
+# Keep infrastructure defaults centralized so tests, deployments, and future
+# configuration loading can override them from one clear place.
 DEFAULT_OLLAMA_BASE_URL: Final[str] = "http://localhost:11434"
 DEFAULT_OLLAMA_GENERATOR_MODEL: Final[str] = "llama3.2"
 DEFAULT_REQUEST_TIMEOUT: Final[float] = 30.0
@@ -31,13 +33,12 @@ DEFAULT_REQUEST_TIMEOUT: Final[float] = 30.0
 class OllamaGeneratorModel:
     """Generate grounded answers through Ollama's local HTTP API.
 
-    This class is intended to satisfy the ``GeneratorModel`` protocol declared
-    in ``integrator.py``. Explicit inheritance is unnecessary because Python
-    protocols support structural typing: implementing ``generate`` with the
-    expected signature is sufficient.
+    The class satisfies the ``GeneratorModel`` protocol from ``integrator.py``
+    structurally: it provides a compatible ``generate(prompt: str) -> str``
+    method without needing explicit inheritance.
 
-    Attributes are kept private because connection and model configuration are
-    implementation details of this adapter, not part of the generator contract.
+    Keeping this class as an adapter makes the rest of the RAG pipeline
+    independent from Ollama-specific transport details.
     """
 
     def __init__(
@@ -46,42 +47,130 @@ class OllamaGeneratorModel:
         model: str = DEFAULT_OLLAMA_GENERATOR_MODEL,
         timeout: float = DEFAULT_REQUEST_TIMEOUT,
     ) -> None:
-        """Store the configuration required for future Ollama requests.
+        """Validate and store configuration for future Ollama requests.
 
         Args:
             ollama_base_url:
-                Base URL of the Ollama server.
+                Base URL of the Ollama server, for example
+                ``http://localhost:11434``.
             model:
                 Name of the Ollama text-generation model.
             timeout:
-                Maximum duration, in seconds, of a generation request.
+                Maximum request duration in seconds.
 
-        Validation and HTTP-client setup will be introduced only after tests
-        specify their expected behavior.
+        Raises:
+            ValueError:
+                If configuration values are empty or invalid.
+            ImportError:
+                If the optional ``requests`` dependency is unavailable.
         """
-        self._ollama_base_url = ollama_base_url
+        self._validate_non_empty_string(
+            value=ollama_base_url,
+            field_name="ollama_base_url",
+        )
+        self._validate_non_empty_string(
+            value=model,
+            field_name="model",
+        )
+        self._validate_positive_number(
+            value=timeout,
+            field_name="timeout",
+        )
+
+        # Normalize only the URL boundary. This prevents accidental double
+        # slashes when we later append "/api/generate".
+        self._ollama_base_url = ollama_base_url.rstrip("/")
         self._model = model
-        self._timeout = timeout
+        self._timeout = float(timeout)
+
+        try:
+            # Import inside __init__ so test environments or deployments that
+            # do not use Ollama fail only when this adapter is instantiated.
+            import requests
+
+            self._requests = requests
+        except ImportError as exc:
+            raise ImportError(
+                "The 'requests' package is required for "
+                "OllamaGeneratorModel. Install it with 'pip install requests'."
+            ) from exc
 
     def generate(self, prompt: str) -> str:
         """Generate an answer for a fully constructed RAG prompt.
 
+        ``RAGIntegrator`` is responsible for building the grounded prompt that
+        contains the user question and retrieved context. This method only
+        sends that prompt to Ollama and returns the generated text.
+
         Args:
             prompt:
-                The grounded prompt prepared by ``RAGIntegrator``, containing
-                both the user's question and retrieved context.
+                The complete prompt prepared by the integrator.
 
         Returns:
             The text generated by Ollama.
 
         Raises:
-            NotImplementedError:
-                Always during the skeleton phase.
+            GeneratorModelError:
+                If the prompt is invalid, Ollama cannot be reached, Ollama
+                returns an HTTP error, or the response shape is malformed.
         """
-        # RED/GREEN boundary:
-        # A later failing test will specify request validation, the Ollama API
-        # payload, response parsing, and error translation before we implement
-        # any of those behaviors.
-        raise NotImplementedError(
-            "OllamaGeneratorModel.generate() is not implemented yet."
-        )
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise GeneratorModelError(
+                "prompt must be a non-empty string."
+            )
+
+        payload = {
+            "model": self._model,
+            "prompt": prompt,
+            # Streaming is disabled because the integrator expects one final
+            # string, not an iterator of partial response chunks.
+            "stream": False,
+        }
+
+        try:
+            response = self._requests.post(
+                f"{self._ollama_base_url}/api/generate",
+                json=payload,
+                timeout=self._timeout,
+            )
+            response.raise_for_status()
+        except self._requests.exceptions.RequestException as exc:
+            raise GeneratorModelError(
+                f"Failed to call Ollama API: {str(exc)}"
+            ) from exc
+
+        try:
+            result = response.json()
+        except ValueError as exc:
+            raise GeneratorModelError(
+                f"Invalid response from Ollama API: {str(exc)}"
+            ) from exc
+
+        generated_text = result.get("response")
+
+        if not isinstance(generated_text, str):
+            raise GeneratorModelError(
+                "Ollama API did not return a valid response field."
+            )
+
+        return generated_text
+
+    @staticmethod
+    def _validate_non_empty_string(value: Any, field_name: str) -> None:
+        """Ensure a configuration value is a meaningful string."""
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"{field_name} must be a non-empty string."
+            )
+
+    @staticmethod
+    def _validate_positive_number(value: Any, field_name: str) -> None:
+        """Ensure a configuration value is a positive numeric value."""
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or value <= 0
+        ):
+            raise ValueError(
+                f"{field_name} must be a positive number."
+            )
