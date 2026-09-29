@@ -8,4 +8,10 @@ from rag_pipeline.embedding import OllamaEmbeddingModel
 
 embedder = OllamaEmbeddingModel()
 vector = embedder.embed("where do i get good pizza?")
-print(len(vector), vector[:5])  
+print(len(vector), vector[:5])
+
+from rag_pipeline.generator import OllamaGeneratorModel
+
+generator = OllamaGeneratorModel()
+answer = generator.generate("hello world")
+print(answer)
