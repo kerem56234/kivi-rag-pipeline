@@ -22,7 +22,7 @@ from rag_pipeline.integrator import GeneratorModelError
 # Keep infrastructure defaults centralized so tests, deployments, and future
 # configuration loading can override them from one clear place.
 DEFAULT_OLLAMA_BASE_URL: Final[str] = "http://localhost:11434"
-DEFAULT_OLLAMA_GENERATOR_MODEL: Final[str] = "llama3.2"
+DEFAULT_OLLAMA_GENERATOR_MODEL: Final[str] = "qwen3.8:latest"
 DEFAULT_REQUEST_TIMEOUT: Final[float] = 30.0
 
 
